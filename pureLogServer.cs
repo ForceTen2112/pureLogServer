@@ -172,6 +172,16 @@ namespace PRoConEvents
                 }
                 //Insert yesterday's date and the avg from that day into bigstaytable then clear daystaytable
                 query = new MySqlCommand("INSERT INTO " + bigStayTableName + " (date, avgstaytime) VALUES ('" + dateYesterday + "', (SELECT AVG(staytime) FROM " + dayStayTableName + ")); " + "DELETE FROM " + dayStayTableName + "; " + "ALTER TABLE " + dayStayTableName + " AUTO_INCREMENT = 1;", this.confirmedConnection);
+                if (testQueryCon(query))
+                {
+                    try { query.ExecuteNonQuery(); }
+                    catch (Exception e)
+                    {
+                        this.toConsole(1, "Couldn't parse query!");
+                        this.toConsole(1, e.ToString());
+                        abortUpdate = true;
+                    }
+                }
             }
             else
             {
@@ -389,7 +399,19 @@ the console output with debug level set to 1.</li>
                         int index = playersListContains(this.oldPlayers[i]);
                         TimeSpan time = allPlayers[index].end();
                         if (time.TotalSeconds >= 30)
+                        {
                             query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "SAM" + "', " + staytime + " ) VALUES ( '" + allPlayers[index].CPlayerInfo.SoldierName + "', " + time.TotalSeconds + " )", this.confirmedConnection);
+                            if (testQueryCon(query))
+                            {
+                                try { query.ExecuteNonQuery(); }
+                                catch (Exception e)
+                                {
+                                    this.toConsole(1, "Couldn't parse query!");
+                                    this.toConsole(1, e.ToString());
+                                    abortUpdate = true;
+                                }
+                            }
+                        }
                         allPlayers.Remove(index);
                     }
                 //make the most recent playerlist the older playerlist so that next time OnListPlayers is run, it will use the playerlist from the last call of OnListPlayers
@@ -508,6 +530,8 @@ the console output with debug level set to 1.</li>
             //Table info.
             lstReturn.Add(new CPluginVariable("Table Names|Big Table", typeof(string), bigTableName));
             lstReturn.Add(new CPluginVariable("Table Names|Day Table", typeof(string), dayTableName));
+            lstReturn.Add(new CPluginVariable("Table Names|Big Stay Table", typeof(string), bigStayTableName));
+            lstReturn.Add(new CPluginVariable("Table Names|Day Stay Table", typeof(string), dayStayTableName));
             lstReturn.Add(new CPluginVariable("Other|Debug Level", typeof(string), debugLevel.ToString()));
             return lstReturn;
         }
@@ -553,6 +577,14 @@ the console output with debug level set to 1.</li>
                 bigTableName = strValue.Trim();
             }
             else if (strVariable.Contains("Day Table"))
+            {
+                dayTableName = strValue.Trim();
+            }
+            else if (strVariable.Contains("Big Stay Table"))
+            {
+                dayTableName = strValue.Trim();
+            }
+            else if (strVariable.Contains("Day Stay Table"))
             {
                 dayTableName = strValue.Trim();
             }
