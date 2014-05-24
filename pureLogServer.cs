@@ -30,12 +30,16 @@ namespace PRoConEvents
         private String mySqlDatabase;
         private String mySqlUsername;
         private String mySqlPassword;
+        private List<CPlayerInfo> oldPlayers;
+        private List<Player> allPlayers;
 
         //private MySqlConnection firstConnection;
         private MySqlConnection confirmedConnection;
         //private bool SqlConnected = true;
         private String bigTableName = "bigtable";
         private String dayTableName = "daytable";
+        private String bigStayTableName = "bigstaytable";
+        private String dayStayTableName = "daystaytable";
 
         private int debugLevel = 1;
         private int backupCache = 0;
@@ -166,6 +170,8 @@ namespace PRoConEvents
                     else { abortUpdate = true; }
                     query.Connection.Close();
                 }
+                //Insert yesterday's date and the avg from that day into bigstaytable then clear daystaytable
+                query = new MySqlCommand("INSERT INTO " + bigStayTableName + " (date, avgstaytime) VALUES ('" + dateYesterday + "', (SELECT AVG(staytime) FROM " + dayStayTableName + ")); " + "DELETE FROM " + dayStayTableName + "; " + "ALTER TABLE " + dayStayTableName + " AUTO_INCREMENT = 1;", this.confirmedConnection);
             }
             else
             {
@@ -363,8 +369,54 @@ the console output with debug level set to 1.</li>
         public void OnPluginLoaded(string strHostName, string strPort, string strPRoConVersion)
         {
             //this.RegisterEvents(this.GetType().Name, "OnServerInfo", "OnListPlayers");
-            this.RegisterEvents(this.GetType().Name, "OnPluginLoaded", "OnServerInfo");
+            this.RegisterEvents(this.GetType().Name, "OnPluginLoaded", "OnServerInfo", "OnListPlayers");
             this.ExecuteCommand("procon.protected.pluginconsole.write", "pureLog Server Edition Loaded!");
+        }
+
+        public void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset)
+        {
+            //if a player in the newest playerList is not in the all playerlist, add them to all playerlist
+            for (int i = 0; i < players.Count; i++)
+                if (playersListContains(players[i]) == -1)
+                    allPlayers.Add(players[i]);
+            try
+            {
+                
+                //if a player is in the last player list, but not int the newest, they left. find out staytime and add their name to the daystaytable then remove them from the all players
+                for (int i = 0; i < this.oldPlayers.Count; i++)
+                    if (playersListContain(this.oldPlayers[i], players) == -1)
+                    {
+                        int index = playersListContains(this.oldPlayers[i]);
+                        TimeSpan time = allPlayers[index].end();
+                        if (time.TotalSeconds >= 30)
+                            query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "SAM" + "', " + staytime + " ) VALUES ( '" + allPlayers[index].CPlayerInfo.SoldierName + "', " + time.TotalSeconds + " )", this.confirmedConnection);
+                        allPlayers.Remove(index);
+                    }
+                //make the most recent playerlist the older playerlist so that next time OnListPlayers is run, it will use the playerlist from the last call of OnListPlayers
+                this.oldPlayers = players;
+            }//catch if oldPlayers is null
+            catch (Exception e)
+            {
+                this.oldPlayers = players;
+            }
+        }
+
+        //check if player is in players
+        private int playersListContains(CPlayerInfo player, List<CPlayerInfo> players)
+        {
+            for (int i = 0; i < allPlayers.Count; i++)
+                if (players[i].SoldierName == player.SoldierName)
+                    return i;
+            return -1;
+        }
+
+        //check if player is in allPlayers
+        private int playersListContains(CPlayerInfo player)
+        {
+            for (int i = 0; i < allPlayers.Count; i++)
+                if (allPlayers[i].CPlayerInfo.SoldierName == player.SoldierName)
+                    return i;
+            return -1;
         }
 
         public void OnPluginEnable()
@@ -516,6 +568,24 @@ the console output with debug level set to 1.</li>
                     debugLevel = 1;
                 }
             }
+        }
+    }
+
+    class Player
+    {
+        public CPlayerInfo player;
+        public DateTime start;
+        public DateTime end;
+
+        public Player(CPlayerInfo player) {
+            this.player = player;
+            start = DateTime.UtcNow;
+        }
+
+        public TimeSpan end()
+        {
+            end = DateTime.UtcNow;
+            return end - start;
         }
     }
 }
