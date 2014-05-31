@@ -35,7 +35,7 @@ namespace PRoConEvents
 
         //private MySqlConnection firstConnection;
         private MySqlConnection confirmedConnection;
-        //private bool SqlConnected = true;
+        private bool SqlConnected = false;
         private String bigTableName = "bigtable";
         private String dayTableName = "daytable";
         private String bigStayTableName = "bigstaytable";
@@ -385,41 +385,45 @@ the console output with debug level set to 1.</li>
 
         public void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset)
         {
-            //if a player in the newest playerList is not in the all playerlist, add them to all playerlist
-            for (int i = 0; i < players.Count; i++)
-                if (playersListContains(players[i]) == -1)
-                    allPlayers.Add(players[i]);
-            try
+            if (pluginEnabled > 0)
             {
-                
-                //if a player is in the last player list, but not int the newest, they left. find out staytime and add their name to the daystaytable then remove them from the all players
-                for (int i = 0; i < this.oldPlayers.Count; i++)
-                    if (playersListContain(this.oldPlayers[i], players) == -1)
-                    {
-                        int index = playersListContains(this.oldPlayers[i]);
-                        TimeSpan time = allPlayers[index].end();
-                        if (time.TotalSeconds >= 30)
+                //if a player in the newest playerList is not in the all playerlist, add them to all playerlist
+                for (int i = 0; i < players.Count; i++)
+                    if (allPlayersListContains(players[i]) == -1)
+                        allPlayers.Add(players[i]);
+                try
+                {
+
+                    //if a player is in the last player list, but not int the newest, they left. find out staytime and add their name to the daystaytable then remove them from the all players
+                    for (int i = 0; i < this.oldPlayers.Count; i++)
+                        if (playersListContain(this.oldPlayers[i], players) == -1)
                         {
-                            query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "SAM" + "', " + staytime + " ) VALUES ( '" + allPlayers[index].CPlayerInfo.SoldierName + "', " + time.TotalSeconds + " )", this.confirmedConnection);
-                            if (testQueryCon(query))
+                            int index = allPlayersListContains(this.oldPlayers[i]);
+                            if (index != -1)
                             {
-                                try { query.ExecuteNonQuery(); }
-                                catch (Exception e)
+                                if (allPlayers[index].end() >= 30)
                                 {
-                                    this.toConsole(1, "Couldn't parse query!");
-                                    this.toConsole(1, e.ToString());
-                                    abortUpdate = true;
+                                    query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "Player', 'staytime' ) VALUES ( 'SAM', " + allPlayers[index].time().TotalSeconds + " )", this.confirmedConnection);
+                                    if (testQueryCon(query))
+                                    {
+                                        try { query.ExecuteNonQuery(); }
+                                        catch (Exception e)
+                                        {
+                                            this.toConsole(1, "Couldn't parse query!");
+                                            this.toConsole(1, e.ToString());
+                                        }
+                                    }
                                 }
+                                allPlayers.Remove(index);
                             }
                         }
-                        allPlayers.Remove(index);
-                    }
-                //make the most recent playerlist the older playerlist so that next time OnListPlayers is run, it will use the playerlist from the last call of OnListPlayers
-                this.oldPlayers = players;
-            }//catch if oldPlayers is null
-            catch (Exception e)
-            {
-                this.oldPlayers = players;
+                    //make the most recent playerlist the older playerlist so that next time OnListPlayers is run, it will use the playerlist from the last call of OnListPlayers
+                    this.oldPlayers = players;
+                }//catch if oldPlayers is null
+                catch (Exception e)
+                {
+                    this.oldPlayers = players;
+                }
             }
         }
 
@@ -433,7 +437,7 @@ the console output with debug level set to 1.</li>
         }
 
         //check if player is in allPlayers
-        private int playersListContains(CPlayerInfo player)
+        private int allPlayersListContains(CPlayerInfo player)
         {
             for (int i = 0; i < allPlayers.Count; i++)
                 if (allPlayers[i].CPlayerInfo.SoldierName == player.SoldierName)
@@ -453,6 +457,7 @@ the console output with debug level set to 1.</li>
 			//Run the function "establishFirstConnection" in two seconds.
             this.initialTimer.Interval = 2000;
             this.initialTimer.Start();
+            this.allPlayers = new List<Player>();
         }
 		
         //The first thing the plugin does.
@@ -460,7 +465,7 @@ the console output with debug level set to 1.</li>
         {
 			//Run this again in 60 seconds IF it fails the first time.
             this.initialTimer.Interval = 60000;
-            bool SqlConnected = true;
+            this.SqlConnected = true;
             this.toConsole(2, "Trying to connect to " + mySqlHostname + ":" + mySqlPort + " with username " + mySqlUsername);
             MySqlConnection firstConnection = new MySqlConnection("Server=" + mySqlHostname + ";" + "Port=" + mySqlPort + ";" + "Database=" + mySqlDatabase + ";" + "Uid=" + mySqlUsername + ";" + "Pwd=" + mySqlPassword + ";" + "Connection Timeout=5;");
             try { firstConnection.Open(); }
@@ -468,10 +473,10 @@ the console output with debug level set to 1.</li>
             {
                 this.toConsole(1, "Initial connection error!");
                 this.toConsole(1, z.ToString());
-                SqlConnected = false;
+                this.SqlConnected = false;
             }
             //Get ready to rock!
-            if (SqlConnected)
+            if (this.SqlConnected)
             {
                 firstConnection.Close();
                 this.toConsole(1, "Connection established with " + mySqlHostname + "!");
@@ -494,6 +499,7 @@ the console output with debug level set to 1.</li>
         public void OnPluginDisable()
         {
             this.pluginEnabled = 0;
+            this.SqlConnection = false;
 			//Does this actually do anything? I dunno.
             this.ExecuteCommand("procon.protected.tasks.remove", "pureLogServer");
             this.toConsole(2, "Stopping connection retry attempts timer...");
@@ -618,6 +624,16 @@ the console output with debug level set to 1.</li>
         {
             end = DateTime.UtcNow;
             return end - start;
+        }
+
+        public TimeSpan time()
+        {
+            try
+            {
+                return end - start;
+            }
+            catch (Exception e) { }
+            return DateTime.UtcNow - start;
         }
     }
 }
