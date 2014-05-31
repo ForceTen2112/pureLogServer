@@ -401,9 +401,9 @@ the console output with debug level set to 1.</li>
                             int index = allPlayersListContains(this.oldPlayers[i]);
                             if (index != -1)
                             {
-                                if (allPlayers[index].end() >= 30)
+                                if (allPlayers[index].end() >= 30 && this.SqlConnected)
                                 {
-                                    query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "Player', 'staytime' ) VALUES ( 'SAM', " + allPlayers[index].time().TotalSeconds + " )", this.confirmedConnection);
+                                    query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( 'player', 'staytime' ) VALUES ( 'SAM', " + allPlayers[index].end().TotalSeconds + " )", this.confirmedConnection);
                                     if (testQueryCon(query))
                                     {
                                         try { query.ExecuteNonQuery(); }
@@ -425,6 +425,29 @@ the console output with debug level set to 1.</li>
                     this.oldPlayers = players;
                 }
             }
+        }
+
+        //iterate through allPlayers and place all ended entries in the table
+        private void addPlayersToTable()
+        {
+            for (int index = 0; index < allPlayers.Count; index++)
+                if (allPlayers[index].ended())
+                {
+                    if (allPlayers[index].end() >= 30 && this.SqlConnected)
+                    {
+                        query = new MySqlCommand("INSERT INTO " + dayStayTableName + " ( '" + "Player', 'staytime' ) VALUES ( 'SAM', " + allPlayers[index].end().TotalSeconds + " )", this.confirmedConnection);
+                        if (testQueryCon(query))
+                        {
+                            try { query.ExecuteNonQuery(); }
+                            catch (Exception e)
+                            {
+                                this.toConsole(1, "Couldn't parse query!");
+                                this.toConsole(1, e.ToString());
+                            }
+                        }
+                    }
+                    allPlayers.Remove(index);
+                }
         }
 
         //check if player is in players
@@ -481,6 +504,8 @@ the console output with debug level set to 1.</li>
                 firstConnection.Close();
                 this.toConsole(1, "Connection established with " + mySqlHostname + "!");
                 this.toConsole(2, "Stopping connection retry attempts timer...");
+                //adds any players' stay time that left the server while the SQL was not connected
+                this.addplayersToTable();
 				//Stop the timer that attempts connections.
                 this.initialTimer.Stop();
                 this.confirmedConnection = firstConnection;
@@ -612,8 +637,9 @@ the console output with debug level set to 1.</li>
     class Player
     {
         public CPlayerInfo player;
-        public DateTime start;
-        public DateTime end;
+        private DateTime start;
+        private DateTime end;
+        private bool ended = false;
 
         public Player(CPlayerInfo player) {
             this.player = player;
@@ -622,18 +648,24 @@ the console output with debug level set to 1.</li>
 
         public TimeSpan end()
         {
-            end = DateTime.UtcNow;
+            if (!ended)
+            {
+                end = DateTime.UtcNow;
+                ended = true;
+            }
             return end - start;
         }
 
         public TimeSpan time()
         {
-            try
-            {
+            if (ended)
                 return end - start;
-            }
-            catch (Exception e) { }
             return DateTime.UtcNow - start;
+        }
+
+        public bool ended()
+        {
+            return ended;
         }
     }
 }
